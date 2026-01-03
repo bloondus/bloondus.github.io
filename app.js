@@ -366,15 +366,15 @@ function getUserLocation() {
                         message = 'Location unavailable. Please use search.';
                         break;
                     case error.TIMEOUT:
-                        message = 'Location timeout. Please use search.';
+                        message = 'Location timeout. Please try again or use search.';
                         break;
                 }
                 reject(new Error(message));
             },
             {
                 enableHighAccuracy: false,
-                timeout: 10000,
-                maximumAge: 0
+                timeout: 15000,
+                maximumAge: 30000
             }
         );
     });
@@ -416,7 +416,7 @@ async function initializeWithLocation() {
         const location = await Promise.race([
             getUserLocation(),
             new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Location timeout after 10 seconds')), 10000)
+                setTimeout(() => reject(new Error('Location timeout - please try again or use search')), 20000)
             )
         ]);
         
