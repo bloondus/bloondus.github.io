@@ -527,23 +527,41 @@ async function searchStation(query) {
             console.log('No stations found by name, trying to geocode address...');
             showLoading('Looking for nearest station to address...');
             
-            // Use the locations API without type filter to get any location (including addresses)
-            const geoUrl = `https://transport.opendata.ch/v1/locations?query=${encodeURIComponent(searchQuery)}`;
-            console.log('Geocoding URL:', geoUrl);
-            const geoResponse = await fetch(geoUrl);
-            const geoData = await geoResponse.json();
-            console.log('Geocoding response:', geoData);
+            // Try multiple geocoding strategies
+            let location = null;
             
-            if (geoData.stations && geoData.stations.length > 0) {
-                const location = geoData.stations[0];
+            // Strategy 1: Try with full address
+            const geoUrl1 = `https://transport.opendata.ch/v1/locations?query=${encodeURIComponent(searchQuery)}`;
+            console.log('Geocoding URL (with house number):', geoUrl1);
+            const geoResponse1 = await fetch(geoUrl1);
+            const geoData1 = await geoResponse1.json();
+            console.log('Geocoding response (with house number):', geoData1);
+            
+            if (geoData1.stations && geoData1.stations.length > 0) {
+                // Find first result with valid coordinates
+                location = geoData1.stations.find(s => s.coordinate && s.coordinate.x && s.coordinate.y);
+                
+                if (!location) {
+                    console.log('No coordinates with house number, trying without...');
+                    // Strategy 2: Remove house number and try again
+                    const queryWithoutNumber = searchQuery.replace(/\s+\d+\s*$/, '');
+                    if (queryWithoutNumber !== searchQuery) {
+                        const geoUrl2 = `https://transport.opendata.ch/v1/locations?query=${encodeURIComponent(queryWithoutNumber)}`;
+                        console.log('Geocoding URL (without house number):', geoUrl2);
+                        const geoResponse2 = await fetch(geoUrl2);
+                        const geoData2 = await geoResponse2.json();
+                        console.log('Geocoding response (without house number):', geoData2);
+                        
+                        if (geoData2.stations && geoData2.stations.length > 0) {
+                            location = geoData2.stations.find(s => s.coordinate && s.coordinate.x && s.coordinate.y);
+                        }
+                    }
+                }
+            }
+            
+            if (location && location.coordinate && location.coordinate.x && location.coordinate.y) {
                 console.log('Found location:', location.name);
                 console.log('Coordinates:', location.coordinate);
-                
-                if (!location.coordinate || !location.coordinate.x || !location.coordinate.y) {
-                    console.error('Location has no valid coordinates');
-                    showError(`No stations found for "${query}"`, false);
-                    return;
-                }
                 
                 // Find nearby stations (remember: API returns x=lat, y=lon reversed!)
                 const lat = location.coordinate.x;
