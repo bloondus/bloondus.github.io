@@ -89,7 +89,11 @@ async function findNearbyStations(lat, lon, radius = 1000) {
                 console.log('⚠️ Station missing coordinates:', station.name);
                 return null;
             }
-            const distance = calculateDistance(lat, lon, station.coordinate.y, station.coordinate.x);
+            // station.coordinate.x = longitude, station.coordinate.y = latitude
+            const stationLat = station.coordinate.y;
+            const stationLon = station.coordinate.x;
+            console.log(`  🗺️ ${station.name}: lat=${stationLat}, lon=${stationLon}`);
+            const distance = calculateDistance(lat, lon, stationLat, stationLon);
             console.log(`  📍 ${station.name}: ${Math.round(distance)}m away`);
             return { ...station, distance };
         }).filter(station => station !== null && station.distance <= radius)
