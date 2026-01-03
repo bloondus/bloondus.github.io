@@ -1,0 +1,777 @@
+/**
+ * No More Trama - Main Application
+ * Static web app for displaying public transport departures
+ * Uses Swiss Transport API (transport.opendata.ch)
+ */
+
+// ============================================
+// State Management
+// ============================================
+const state = {
+    userLocation: null,
+    currentStation: null,
+    searchRadius: 50, // meters
+    autoRefreshInterval: null,
+    departures: []
+};
+
+// ============================================
+// DOM Elements
+// ============================================
+const elements = {
+    loadingState: document.getElementById('loadingState'),
+    loadingText: document.getElementById('loadingText'),
+    errorState: document.getElementById('errorState'),
+    errorText: document.getElementById('errorText'),
+    retryBtn: document.getElementById('retryBtn'),
+    searchContainer: document.getElementById('searchContainer'),
+    searchInput: document.getElementById('searchInput'),
+    searchBtn: document.getElementById('searchBtn'),
+    stationInfo: document.getElementById('stationInfo'),
+    stationName: document.getElementById('stationName'),
+    stationDistance: document.getElementById('stationDistance'),
+    refreshBtn: document.getElementById('refreshBtn'),
+    changeStationBtn: document.getElementById('changeStationBtn'),
+    departuresContainer: document.getElementById('departuresContainer'),
+    departuresList: document.getElementById('departuresList'),
+    lastUpdate: document.getElementById('lastUpdate'),
+    radiusControl: document.getElementById('radiusControl'),
+    radiusSlider: document.getElementById('radiusSlider'),
+    radiusValue: document.getElementById('radiusValue'),
+    retryWithRadiusBtn: document.getElementById('retryWithRadiusBtn'),
+    // Modal elements
+    routeModal: document.getElementById('routeModal'),
+    closeModal: document.getElementById('closeModal'),
+    routeTitle: document.getElementById('routeTitle'),
+    routeLoading: document.getElementById('routeLoading'),
+    routeError: document.getElementById('routeError'),
+    routeErrorText: document.getElementById('routeErrorText'),
+    routeInfo: document.getElementById('routeInfo'),
+    routeDescription: document.getElementById('routeDescription'),
+    stopsList: document.getElementById('stopsList')
+};
+
+// ============================================
+// API Functions
+// ============================================
+
+/**
+ * Find nearby stations using coordinates
+ * @param {number} lat - Latitude
+ * @param {number} lon - Longitude
+ * @param {number} radius - Search radius in meters
+ * @returns {Promise<Array>} Array of nearby locations
+ */
+async function findNearbyStations(lat, lon, radius = 50) {
+    const url = `https://transport.opendata.ch/v1/locations?x=${lon}&y=${lat}&type=station`;
+    
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        // Filter by distance (API returns closest first)
+        const stations = data.stations || [];
+        
+        if (stations.length === 0) {
+            return [];
+        }
+        
+        // Calculate distances and filter by radius
+        const stationsWithDistance = stations.map(station => {
+            const distance = calculateDistance(
+                lat, 
+                lon, 
+                station.coordinate.y, 
+                station.coordinate.x
+            );
+            return { ...station, distance };
+        }).filter(station => station.distance <= radius);
+        
+        return stationsWithDistance;
+    } catch (error) {
+        console.error('Error finding nearby stations:', error);
+        throw error;
+    }
+}
+
+/**
+ * Search stations by name
+ * @param {string} query - Search query
+ * @returns {Promise<Array>} Array of matching stations
+ */
+async function searchStationsByName(query) {
+    const url = `https://transport.opendata.ch/v1/locations?query=${encodeURIComponent(query)}&type=station`;
+    
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        return data.stations || [];
+    } catch (error) {
+        console.error('Error searching stations:', error);
+        throw error;
+    }
+}
+
+/**
+ * Fetch departures from a station
+ * @param {string} stationId - Station ID or name
+ * @param {number} limit - Maximum number of departures
+ * @returns {Promise<Array>} Array of departures
+ */
+async function fetchDepartures(stationId, limit = 6) {
+    const url = `https://transport.opendata.ch/v1/stationboard?station=${encodeURIComponent(stationId)}&limit=${limit}`;
+    
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        return data.stationboard || [];
+    } catch (error) {
+        console.error('Error fetching departures:', error);
+        throw error;
+    }
+}
+
+/**
+ * Fetch route/connection information for a specific line
+ * @param {string} from - Starting station
+ * @param {string} to - Destination station
+ * @param {string} via - Optional via stations
+ * @returns {Promise<Object>} Connection details with stops
+ */
+async function fetchConnectionStops(from, to, via = '') {
+    let url = `https://transport.opendata.ch/v1/connections?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=1`;
+    
+    if (via) {
+        url += `&via[]=${encodeURIComponent(via)}`;
+    }
+    
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.connections && data.connections.length > 0) {
+            return data.connections[0];
+        }
+        
+        return null;
+    } catch (error) {
+        console.error('Error fetching connection:', error);
+        throw error;
+    }
+}
+
+// ============================================
+// Helper Functions
+// ============================================
+
+/**
+ * Calculate distance between two coordinates using Haversine formula
+ * @param {number} lat1 - Latitude 1
+ * @param {number} lon1 - Longitude 1
+ * @param {number} lat2 - Latitude 2
+ * @param {number} lon2 - Longitude 2
+ * @returns {number} Distance in meters
+ */
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371e3; // Earth's radius in meters
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c; // Distance in meters
+}
+
+/**
+ * Format distance for display
+ * @param {number} meters - Distance in meters
+ * @returns {string} Formatted distance string
+ */
+function formatDistance(meters) {
+    if (meters < 1000) {
+        return `${Math.round(meters)}m away`;
+    }
+    return `${(meters / 1000).toFixed(1)}km away`;
+}
+
+/**
+ * Calculate minutes until departure
+ * @param {string} departureTime - ISO timestamp
+ * @returns {number} Minutes until departure
+ */
+function getMinutesUntilDeparture(departureTime) {
+    const now = new Date();
+    const departure = new Date(departureTime);
+    const diff = departure - now;
+    return Math.max(0, Math.round(diff / 60000));
+}
+
+/**
+ * Determine transport type from category
+ * @param {string} category - Transport category
+ * @returns {string} Transport type
+ */
+function getTransportType(category) {
+    if (!category) return 'default';
+    
+    const cat = category.toLowerCase();
+    if (cat.includes('tram') || cat.includes('str')) return 'tram';
+    if (cat.includes('bus') || cat.includes('nfb')) return 'bus';
+    if (cat.includes('train') || cat.includes('zug') || cat.includes('ic') || 
+        cat.includes('ir') || cat.includes('re') || cat.includes('s')) return 'train';
+    
+    return 'default';
+}
+
+// ============================================
+// UI Functions
+// ============================================
+
+/**
+ * Show loading state
+ * @param {string} message - Loading message
+ */
+function showLoading(message = 'Loading...') {
+    elements.loadingText.textContent = message;
+    elements.loadingState.classList.remove('hidden');
+    elements.errorState.classList.add('hidden');
+    // Keep search visible during loading
+    elements.searchContainer.classList.remove('hidden');
+    elements.stationInfo.classList.add('hidden');
+    elements.departuresContainer.classList.add('hidden');
+    elements.radiusControl.classList.add('hidden');
+}
+
+/**
+ * Render departures list
+ * @param {Array} departures - Array of departure objects
+ */
+function renderDepartures(departures) {
+    if (!departures || departures.length === 0) {
+        elements.departuresList.innerHTML = `
+            <div class="empty-state">
+                <p>No departures found at this time.</p>
+            </div>
+        `;
+        return;
+    }
+
+    elements.departuresList.innerHTML = departures.map((departure, index) => {
+        const minutes = getMinutesUntilDeparture(departure.stop.departure);
+        const transportType = getTransportType(departure.category);
+        
+        let timeClass = '';
+        if (minutes <= 2) timeClass = 'urgent';
+        else if (minutes <= 5) timeClass = 'soon';
+        
+        return `
+            <div class="departure-card" data-departure-index="${index}">
+                <div class="transport-type ${transportType}"></div>
+                <div class="line-badge ${transportType}">
+                    ${departure.number || departure.category}
+                </div>
+                <div class="departure-info">
+                    <div class="departure-destination">${departure.to || 'Unknown'}</div>
+                    <div class="departure-category">${departure.category || ''}</div>
+                </div>
+                <div class="departure-time">
+                    <div class="time-minutes ${timeClass}">${minutes}'</div>
+                    <div class="time-label">min</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    // Add click event listeners to departure cards
+    document.querySelectorAll('.departure-card').forEach(card => {
+        card.addEventListener('click', handleDepartureClick);
+    });
+
+    // Update last update time
+    const now = new Date();
+    elements.lastUpdate.textContent = `Last updated: ${now.toLocaleTimeString()}`;
+}
+
+/**
+ * Update station info display
+ * @param {Object} station - Station object
+ */
+function updateStationInfo(station) {
+    elements.stationName.textContent = station.name;
+    
+    if (station.distance !== undefined) {
+        elements.stationDistance.textContent = formatDistance(station.distance);
+    } else {
+        elements.stationDistance.textContent = '';
+    }
+}
+
+// ============================================
+// Core Functions
+// ============================================
+
+/**
+ * Get user's current location
+ * @returns {Promise<{latitude: number, longitude: number}>}
+ */
+function getUserLocation() {
+    return new Promise((resolve, reject) => {
+        console.log('Starting geolocation request...');
+        
+        if (!navigator.geolocation) {
+            console.error('Geolocation not supported');
+            reject(new Error('Geolocation is not supported by your browser'));
+            return;
+        }
+
+        const options = {
+            enableHighAccuracy: false, // Changed to false for faster response
+            timeout: 15000, // Increased timeout
+            maximumAge: 0 // Don't use cached position
+        };
+
+        console.log('Requesting position with options:', options);
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                console.log('Position received:', position.coords);
+                resolve({
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude
+                });
+            },
+            (error) => {
+                console.error('Geolocation error:', error);
+                let message = 'Unable to get your location';
+                switch (error.code) {
+                    case error.PERMISSION_DENIED:
+                        message = 'Location access denied. Please enable location services.';
+                        break;
+                    case error.POSITION_UNAVAILABLE:
+                        message = 'Location information unavailable.';
+                        break;
+                    case error.TIMEOUT:
+                        message = 'Location request timed out. Please try manual search.';
+                        break;
+                }
+                reject(new Error(message));
+            },
+            options
+        );
+    });
+}
+
+/**
+ * Load departures for the current station
+ */
+async function loadDepartures() {
+    if (!state.currentStation) {
+        showError('No station selected');
+        return;
+    }
+
+    try {
+        showLoading('Loading departures...');
+        const departures = await fetchDepartures(state.currentStation.name, 6);
+        state.departures = departures;
+        
+        updateStationInfo(state.currentStation);
+        renderDepartures(departures);
+        showDepartures();
+        
+        // Start auto-refresh
+        startAutoRefresh();
+    } catch (error) {
+        console.error('Error loading departures:', error);
+        showError('Failed to load departures. Please try again.');
+    }
+}
+
+/**
+ * Initialize app with automatic location detection
+ */
+async function initializeWithLocation() {
+    // Show search immediately so user doesn't have to wait
+    elements.searchContainer.classList.remove('hidden');
+    
+    try {
+        console.log('Initializing app...');
+        showLoading('Detecting location... (or search manually below)');
+        
+        // Get user location with timeout
+        console.log('Getting user location...');
+        const location = await Promise.race([
+            getUserLocation(),
+            new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Location timeout')), 8000)
+            )
+        ]);
+        
+        state.userLocation = location;
+        console.log('User location:', location);
+        
+        showLoading('Finding nearby stations...');
+        
+        // Find nearby stations with larger default radius
+        console.log('Searching for nearby stations...');
+        const stations = await findNearbyStations(
+            location.latitude, 
+            location.longitude, 
+            200 // Start with 200m instead of 50m
+        );
+        console.log('Found stations:', stations.length);
+        
+        if (stations.length === 0) {
+            // No stations found, show radius control
+            console.log('No stations found in radius: 200m');
+            elements.loadingState.classList.add('hidden');
+            elements.radiusControl.classList.remove('hidden');
+            state.searchRadius = 200;
+            elements.radiusSlider.value = 200;
+            elements.radiusValue.textContent = 200;
+            showError('No stations found nearby. Try increasing the search radius or search manually.', false);
+            return;
+        }
+        
+        // Use the closest station
+        state.currentStation = stations[0];
+        console.log('Selected station:', state.currentStation.name);
+        await loadDepartures();
+        
+    } catch (error) {
+        console.error('Initialization error:', error);
+        elements.loadingState.classList.add('hidden');
+        // Don't show error prominently, just let user search manually
+        console.log('Falling back to manual search');
+    }
+}
+
+/**
+ * Search for a station by name
+ * @param {string} query - Search query
+ */
+async function searchStation(query) {
+    if (!query || query.trim().length < 2) {
+        showError('Please enter at least 2 characters', false);
+        return;
+    }
+
+    try {
+        console.log('Searching for station:', query);
+        showLoading('Searching stations...');
+        const stations = await searchStationsByName(query.trim());
+        console.log('Search results:', stations);
+        
+        if (stations.length === 0) {
+            showError(`No stations found for "${query}"`, false);
+            return;
+        }
+        
+        // Use the first result
+        state.currentStation = stations[0];
+        console.log('Selected station:', state.currentStation);
+        await loadDepartures();
+        
+    } catch (error) {
+        console.error('Search error:', error);
+        showError('Search failed. Please try again.');
+    }
+}
+
+/**
+ * Stop auto-refresh timer
+ */
+function stopAutoRefresh() {
+    if (state.autoRefreshInterval) {
+        clearInterval(state.autoRefreshInterval);
+        state.autoRefreshInterval = null;
+    }
+}
+
+// ============================================
+// Modal Functions
+// ============================================
+
+/**
+ * Show route modal
+ */
+function showRouteModal() {
+    elements.routeModal.classList.remove('hidden');
+    elements.routeLoading.classList.remove('hidden');
+    elements.routeError.classList.add('hidden');
+    elements.routeInfo.classList.add('hidden');
+    document.body.style.overflow = 'hidden'; // Prevent background scrolling
+}
+
+/**
+ * Hide route modal
+ */
+function hideRouteModal() {
+    elements.routeModal.classList.add('hidden');
+    document.body.style.overflow = ''; // Restore scrolling
+}
+
+/**
+ * Show route information
+ * @param {Object} departure - Departure object
+ */
+async function showRouteInformation(departure) {
+    showRouteModal();
+    
+    // Set title
+    const lineNumber = departure.number || departure.category;
+    const destination = departure.to || 'Unknown';
+    elements.routeTitle.textContent = `${lineNumber} → ${destination}`;
+    
+    try {
+        // Fetch connection information
+        const connection = await fetchConnectionStops(
+            state.currentStation.name,
+            departure.to
+        );
+        
+        if (!connection || !connection.sections || connection.sections.length === 0) {
+            throw new Error('No route information available');
+        }
+        
+        // Get the first section (usually the main journey)
+        const section = connection.sections[0];
+        
+        if (!section.journey || !section.journey.passList) {
+            throw new Error('No stop information available');
+        }
+        
+        // Extract stops
+        const stops = section.journey.passList;
+        
+        // Set description
+        const duration = Math.round((new Date(section.arrival.departure) - new Date(section.departure.departure)) / 60000);
+        elements.routeDescription.textContent = `${stops.length} stops • ${duration} min journey`;
+        
+        // Render stops list
+        renderStopsList(stops, state.currentStation.name);
+        
+        // Show route info
+        elements.routeLoading.classList.add('hidden');
+        elements.routeInfo.classList.remove('hidden');
+        
+    } catch (error) {
+        console.error('Error loading route:', error);
+        elements.routeLoading.classList.add('hidden');
+        elements.routeError.classList.remove('hidden');
+        elements.routeErrorText.textContent = 'Unable to load route information. Please try again.';
+    }
+}
+
+/**
+ * Render stops list in modal
+ * @param {Array} stops - Array of stop objects
+// Retry with new radius
+elements.retryWithRadiusBtn.addEventListener('click', () => {
+    if (state.userLocation) {
+        initializeWithLocation();
+    } else {
+        showError('Location not available. Please search manually.', false);
+    }
+});
+
+// Close modal button
+elements.closeModal.addEventListener('click', () => {
+    hideRouteModal();
+});
+
+// Close modal when clicking outside
+elements.routeModal.addEventListener('click', (e) => {
+    if (e.target === elements.routeModal) {
+        hideRouteModal();
+    }
+});
+
+// Close modal with Escape key
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !elements.routeModal.classList.contains('hidden')) {
+        hideRouteModal();
+    }
+}); 
+    elements.stopsList.innerHTML = stops.map((stop, index) => {
+        const isCurrent = stop.station.name === currentStationName;
+        const currentClass = isCurrent ? 'current' : '';
+        
+        // Calculate distance if user location is available
+        let distanceHtml = '';
+        if (state.userLocation && stop.station.coordinate) {
+            const distance = calculateDistance(
+                state.userLocation.latitude,
+                state.userLocation.longitude,
+                stop.station.coordinate.y,
+                stop.station.coordinate.x
+            );
+            distanceHtml = `<div class="stop-distance">${formatDistance(distance)}</div>`;
+        }
+        
+        return `
+            <div class="stop-item ${currentClass}">
+                <div class="stop-connector">
+                    <div class="stop-dot"></div>
+                    ${index < stops.length - 1 ? '<div class="stop-line"></div>' : ''}
+                </div>
+                <div class="stop-details">
+                    <div class="stop-name">${stop.station.name}</div>
+                    ${isCurrent ? '<div class="stop-distance">Your current stop</div>' : distanceHtml}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+/**
+ * Handle departure card click
+ * @param {Event} event - Click event
+ */
+async function handleDepartureClick(event) {
+    const card = event.currentTarget;
+    const departureIndex = parseInt(card.dataset.departureIndex);
+    
+    if (isNaN(departureIndex) || !state.departures[departureIndex]) {
+        console.error('Invalid departure index');
+        return;
+    }
+    
+    const departure = state.departures[departureIndex];
+    await showRouteInformation(departure);
+}           return;
+        }
+        
+        // Use the first result
+        state.currentStation = stations[0];
+        await loadDepartures();
+        
+    } catch (error) {
+        console.error('Search error:', error);
+        showError('Search failed. Please try again.');
+    }
+}
+
+/**
+ * Start auto-refresh timer
+ */
+function startAutoRefresh() {
+    // Clear existing interval
+    if (state.autoRefreshInterval) {
+        clearInterval(state.autoRefreshInterval);
+    }
+    
+    // Refresh every 60 seconds
+    state.autoRefreshInterval = setInterval(() => {
+        if (state.currentStation) {
+            loadDepartures();
+        }
+    }, 60000);
+}
+
+/**
+ * Stop auto-refresh timer
+ */
+function stopAutoRefresh() {
+    if (state.autoRefreshInterval) {
+        clearInterval(state.autoRefreshInterval);
+        state.autoRefreshInterval = null;
+    }
+}
+
+// ============================================
+// Event Handlers
+// ============================================
+
+// Retry button
+elements.retryBtn.addEventListener('click', () => {
+    initializeWithLocation();
+});
+
+// Search button
+elements.searchBtn.addEventListener('click', () => {
+    const query = elements.searchInput.value;
+    searchStation(query);
+});
+
+// Search input - Enter key
+elements.searchInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        const query = elements.searchInput.value;
+        searchStation(query);
+    }
+});
+
+// Refresh button
+elements.refreshBtn.addEventListener('click', () => {
+    loadDepartures();
+});
+
+// Change station button
+elements.changeStationBtn.addEventListener('click', () => {
+    stopAutoRefresh();
+    state.currentStation = null;
+    elements.searchInput.value = '';
+    elements.stationInfo.classList.add('hidden');
+    elements.departuresContainer.classList.add('hidden');
+    elements.searchContainer.classList.remove('hidden');
+    elements.searchInput.focus();
+});
+
+// Radius slider
+elements.radiusSlider.addEventListener('input', (e) => {
+    elements.radiusValue.textContent = e.target.value;
+    state.searchRadius = parseInt(e.target.value);
+});
+
+// Retry with new radius
+elements.retryWithRadiusBtn.addEventListener('click', () => {
+    if (state.userLocation) {
+        initializeWithLocation();
+    } else {
+        showError('Location not available. Please search manually.', false);
+    }
+});
+
+// ============================================
+// App Initialization
+// ============================================
+
+// Start the app when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('No More Trama - Initialized');
+    initializeWithLocation();
+});
+
+// Handle visibility change (refresh when app becomes visible)
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && state.currentStation) {
+        loadDepartures();
+    }
+});
+
+// Clean up on page unload
+window.addEventListener('beforeunload', () => {
+    stopAutoRefresh();
+});
