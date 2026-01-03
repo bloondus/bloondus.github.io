@@ -585,9 +585,20 @@ async function searchStation(query) {
             return;
         }
         
-        state.currentStation = stations[0];
-        console.log('Selected station:', state.currentStation.name);
-        await loadDepartures();
+        // Show all found stations for selection (instead of auto-selecting first one)
+        if (stations.length === 1) {
+            // Only one station - load it directly
+            state.currentStation = stations[0];
+            console.log('Selected station:', state.currentStation.name);
+            await loadDepartures();
+        } else {
+            // Multiple stations - let user choose
+            console.log(`Found ${stations.length} matching stations, showing selection...`);
+            elements.loadingState.classList.add('hidden');
+            elements.nearbyStations.classList.remove('hidden');
+            state.nearbyStations = stations;
+            renderNearbyStations(stations);
+        }
         
     } catch (error) {
         console.error('Search error:', error);
