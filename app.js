@@ -118,7 +118,26 @@ async function searchStationsByName(query) {
         if (!response.ok) throw new Error(`API error: ${response.status}`);
         
         const data = await response.json();
-        return data.stations || [];
+        const stations = data.stations || [];
+        
+        // Filter out addresses - only keep real stations with an ID
+        const realStations = stations.filter(station => {
+            // Station must have an ID (addresses often have null ID)
+            if (!station.id) {
+                console.log(`  ⚠️ Skipping address without ID: ${station.name}`);
+                return false;
+            }
+            // Skip if name contains typical address indicators like numbers at the end
+            const hasHouseNumber = /\s+\d+\s*$/.test(station.name);
+            if (hasHouseNumber) {
+                console.log(`  ⚠️ Skipping address with house number: ${station.name}`);
+                return false;
+            }
+            return true;
+        });
+        
+        console.log(`Filtered ${stations.length} results to ${realStations.length} real stations`);
+        return realStations;
     } catch (error) {
         console.error('Error searching stations:', error);
         throw error;
