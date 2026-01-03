@@ -423,11 +423,19 @@ async function initializeWithLocation() {
         const selectedRadius = parseInt(elements.radiusSelect.value);
         console.log('Search radius:', selectedRadius, 'meters');
         
-        const stations = await findNearbyStations(
-            location.latitude, 
-            location.longitude, 
-            selectedRadius
-        );
+        let stations = [];
+        try {
+            console.log('Calling findNearbyStations with:', location.latitude, location.longitude, selectedRadius);
+            stations = await findNearbyStations(
+                location.latitude, 
+                location.longitude, 
+                selectedRadius
+            );
+            console.log('✓ findNearbyStations returned:', stations.length, 'stations');
+        } catch (error) {
+            console.error('❌ Error in findNearbyStations:', error);
+            throw error;
+        }
         console.log('✓ Found', stations.length, 'stations within', selectedRadius, 'meters');
         
         if (stations.length === 0) {
