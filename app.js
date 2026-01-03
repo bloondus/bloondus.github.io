@@ -61,22 +61,29 @@ const elements = {
 // ============================================
 
 async function findNearbyStations(lat, lon, radius = 50) {
+    // API doesn't support radius parameter, so we fetch more stations and filter
     const url = `https://transport.opendata.ch/v1/locations?x=${lon}&y=${lat}&type=station`;
     
     try {
+        console.log('🔍 Searching for stations near:', { lat, lon, radius });
         const response = await fetch(url);
         if (!response.ok) throw new Error(`API error: ${response.status}`);
         
         const data = await response.json();
+        console.log('📡 API response:', data);
         const stations = data.stations || [];
+        console.log('Found', stations.length, 'stations from API');
         
         if (stations.length === 0) return [];
         
         const stationsWithDistance = stations.map(station => {
             const distance = calculateDistance(lat, lon, station.coordinate.y, station.coordinate.x);
+            console.log(`  - ${station.name}: ${Math.round(distance)}m`);
             return { ...station, distance };
-        }).filter(station => station.distance <= radius);
+        }).filter(station => station.distance <= radius)
+          .sort((a, b) => a.distance - b.distance);
         
+        console.log('✓ Filtered to', stationsWithDistance.length, 'stations within', radius, 'meters');
         return stationsWithDistance;
     } catch (error) {
         console.error('Error finding nearby stations:', error);
