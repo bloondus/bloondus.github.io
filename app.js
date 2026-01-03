@@ -703,8 +703,11 @@ document.addEventListener('keydown', (e) => {
 
 document.addEventListener('DOMContentLoaded', () => {
     console.log('No More Trama - Initialized');
-    // Don't auto-start location - let user click button
     elements.radiusSelector.classList.remove('hidden');
+    
+    // Auto-start location detection on page load
+    console.log('Auto-starting location detection...');
+    initializeWithLocation();
 });
 
 document.addEventListener('visibilitychange', () => {
