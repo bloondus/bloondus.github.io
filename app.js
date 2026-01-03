@@ -90,10 +90,11 @@ async function findNearbyStations(lat, lon, radius = 1000) {
                 console.log('⚠️ Station missing coordinates:', station.name);
                 return null;
             }
-            // station.coordinate.x = longitude, station.coordinate.y = latitude
-            const stationLat = station.coordinate.y;
-            const stationLon = station.coordinate.x;
-            console.log(`  🗺️ ${station.name}: lat=${stationLat}, lon=${stationLon}`);
+            // NOTE: Swiss Transport API returns coordinates in reversed order!
+            // station.coordinate.x = LATITUDE (not longitude!)
+            // station.coordinate.y = LONGITUDE (not latitude!)
+            const stationLat = station.coordinate.x;
+            const stationLon = station.coordinate.y;
             const distance = calculateDistance(lat, lon, stationLat, stationLon);
             console.log(`  📍 ${station.name}: ${Math.round(distance)}m away`);
             return { ...station, distance };
