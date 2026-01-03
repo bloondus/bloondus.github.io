@@ -509,8 +509,17 @@ async function searchStation(query) {
         console.log('Searching for station:', query);
         showLoading('Searching stations...');
         
+        let searchQuery = query.trim();
+        
+        // If query doesn't contain a city name, prepend "Zürich, "
+        const hasCityName = /zürich|winterthur|bern|basel|luzern|genf|geneva|lausanne/i.test(searchQuery);
+        if (!hasCityName && !searchQuery.includes(',')) {
+            searchQuery = 'Zürich, ' + searchQuery;
+            console.log('Added city prefix:', searchQuery);
+        }
+        
         // First try to find stations by name
-        let stations = await searchStationsByName(query.trim());
+        let stations = await searchStationsByName(searchQuery);
         console.log('Direct station search results:', stations);
         
         // If no stations found, try to geocode the address and find nearby stations
@@ -519,7 +528,7 @@ async function searchStation(query) {
             showLoading('Looking for nearest station to address...');
             
             // Use the locations API without type filter to get any location (including addresses)
-            const geoUrl = `https://transport.opendata.ch/v1/locations?query=${encodeURIComponent(query.trim())}`;
+            const geoUrl = `https://transport.opendata.ch/v1/locations?query=${encodeURIComponent(searchQuery)}`;
             console.log('Geocoding URL:', geoUrl);
             const geoResponse = await fetch(geoUrl);
             const geoData = await geoResponse.json();
