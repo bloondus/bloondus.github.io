@@ -13,7 +13,8 @@ const state = {
     nearbyStations: null,
     searchRadius: 50,
     autoRefreshInterval: null,
-    departures: []
+    departures: [],
+    isLoadingLocation: false
 };
 
 // ============================================
@@ -403,7 +404,14 @@ async function loadDepartures() {
 }
 
 async function initializeWithLocation() {
+    // Prevent multiple simultaneous location requests
+    if (state.isLoadingLocation) {
+        console.log('⚠️ Location search already in progress, ignoring click');
+        return;
+    }
+    
     elements.searchContainer.classList.remove('hidden');
+    state.isLoadingLocation = true;
     
     try {
         console.log('=== Starting location detection ===');
@@ -452,6 +460,7 @@ async function initializeWithLocation() {
             elements.radiusSlider.value = selectedRadius;
             elements.radiusValue.textContent = selectedRadius;
             showError('No stations found nearby. Try increasing the radius.', false);
+            state.isLoadingLocation = false;
             return;
         }
         
@@ -466,6 +475,8 @@ async function initializeWithLocation() {
         console.error('!!! Initialization error:', error);
         elements.loadingState.classList.add('hidden');
         showError(error.message || 'Location failed. Please use search.', false);
+    } finally {
+        state.isLoadingLocation = false;
     }
 }
 
