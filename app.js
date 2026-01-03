@@ -73,6 +73,7 @@ async function findNearbyStations(lat, lon, radius = 1000) {
         
         const data = await response.json();
         console.log('📡 Full API response:', data);
+        console.log('📡 First station coordinates:', data.stations?.[0]?.coordinate);
         
         // The API returns a 'stations' array
         const stations = data.stations || [];
