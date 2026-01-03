@@ -511,31 +511,40 @@ async function searchStation(query) {
         
         // First try to find stations by name
         let stations = await searchStationsByName(query.trim());
-        console.log('Search results:', stations);
+        console.log('Direct station search results:', stations);
         
         // If no stations found, try to geocode the address and find nearby stations
         if (stations.length === 0) {
             console.log('No stations found by name, trying to geocode address...');
             showLoading('Looking for nearest station to address...');
             
-            // Use the locations API without type filter to get coordinates
+            // Use the locations API without type filter to get any location (including addresses)
             const geoUrl = `https://transport.opendata.ch/v1/locations?query=${encodeURIComponent(query.trim())}`;
+            console.log('Geocoding URL:', geoUrl);
             const geoResponse = await fetch(geoUrl);
             const geoData = await geoResponse.json();
+            console.log('Geocoding response:', geoData);
             
             if (geoData.stations && geoData.stations.length > 0) {
                 const location = geoData.stations[0];
-                console.log('Found location:', location.name, 'at', location.coordinate);
+                console.log('Found location:', location.name);
+                console.log('Coordinates:', location.coordinate);
                 
-                // Find nearby stations
-                const nearbyStations = await findNearbyStations(
-                    location.coordinate.x,  // latitude
-                    location.coordinate.y,  // longitude
-                    1000  // 1km radius
-                );
+                if (!location.coordinate || !location.coordinate.x || !location.coordinate.y) {
+                    console.error('Location has no valid coordinates');
+                    showError(`No stations found for "${query}"`, false);
+                    return;
+                }
+                
+                // Find nearby stations (remember: API returns x=lat, y=lon reversed!)
+                const lat = location.coordinate.x;
+                const lon = location.coordinate.y;
+                console.log(`Searching for stations near lat=${lat}, lon=${lon}`);
+                
+                const nearbyStations = await findNearbyStations(lat, lon, 1000);
+                console.log(`Found ${nearbyStations.length} stations within 1000m`);
                 
                 if (nearbyStations.length > 0) {
-                    console.log(`Found ${nearbyStations.length} nearby stations`);
                     // Show station selection
                     elements.loadingState.classList.add('hidden');
                     elements.nearbyStations.classList.remove('hidden');
