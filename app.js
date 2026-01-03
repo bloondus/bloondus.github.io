@@ -60,30 +60,42 @@ const elements = {
 // API Functions
 // ============================================
 
-async function findNearbyStations(lat, lon, radius = 50) {
-    // API doesn't support radius parameter, so we fetch more stations and filter
+async function findNearbyStations(lat, lon, radius = 1000) {
+    // Swiss Transport API uses WGS84 coordinates (latitude/longitude)
+    // x = longitude, y = latitude
     const url = `https://transport.opendata.ch/v1/locations?x=${lon}&y=${lat}&type=station`;
     
     try {
         console.log('🔍 Searching for stations near:', { lat, lon, radius });
+        console.log('📍 API URL:', url);
         const response = await fetch(url);
         if (!response.ok) throw new Error(`API error: ${response.status}`);
         
         const data = await response.json();
-        console.log('📡 API response:', data);
+        console.log('📡 Full API response:', data);
+        
+        // The API returns a 'stations' array
         const stations = data.stations || [];
-        console.log('Found', stations.length, 'stations from API');
+        console.log('📊 Found', stations.length, 'stations from API');
         
-        if (stations.length === 0) return [];
+        if (stations.length === 0) {
+            console.log('⚠️ No stations returned by API');
+            return [];
+        }
         
+        // Calculate distance for each station and filter by radius
         const stationsWithDistance = stations.map(station => {
+            if (!station.coordinate) {
+                console.log('⚠️ Station missing coordinates:', station.name);
+                return null;
+            }
             const distance = calculateDistance(lat, lon, station.coordinate.y, station.coordinate.x);
-            console.log(`  - ${station.name}: ${Math.round(distance)}m`);
+            console.log(`  📍 ${station.name}: ${Math.round(distance)}m away`);
             return { ...station, distance };
-        }).filter(station => station.distance <= radius)
+        }).filter(station => station !== null && station.distance <= radius)
           .sort((a, b) => a.distance - b.distance);
         
-        console.log('✓ Filtered to', stationsWithDistance.length, 'stations within', radius, 'meters');
+        console.log('✅ Filtered to', stationsWithDistance.length, 'stations within', radius, 'meters');
         return stationsWithDistance;
     } catch (error) {
         console.error('Error finding nearby stations:', error);
