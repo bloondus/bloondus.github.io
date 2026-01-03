@@ -716,9 +716,17 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('No More Trama - Initialized');
     elements.radiusSelector.classList.remove('hidden');
     
-    // Auto-start location detection on page load
-    console.log('Auto-starting location detection...');
-    initializeWithLocation();
+    // Only auto-start if we don't have a current station
+    // (e.g., first visit or after changing station)
+    if (!state.currentStation) {
+        console.log('Auto-starting location detection...');
+        // Small delay to let the page fully render
+        setTimeout(() => {
+            if (!state.isLoadingLocation) {
+                initializeWithLocation();
+            }
+        }, 300);
+    }
 });
 
 document.addEventListener('visibilitychange', () => {
