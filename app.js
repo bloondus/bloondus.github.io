@@ -393,8 +393,8 @@ function getUserLocation() {
             },
             {
                 enableHighAccuracy: false,
-                timeout: 15000,
-                maximumAge: 30000
+                timeout: 20000,
+                maximumAge: 60000  // Use cached position up to 60 seconds old
             }
         );
     });
@@ -786,9 +786,14 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('No More Trama - Initialized');
     elements.radiusSelector.classList.remove('hidden');
     
-    // Don't auto-start - let user click "Use My Location" button
-    // This prevents timeout issues on page refresh
-    console.log('Ready - click "Use My Location" or search for a station');
+    // Auto-start location detection with smart caching
+    // Small delay to prevent conflicts
+    setTimeout(() => {
+        if (!state.isLoadingLocation && !state.currentStation) {
+            console.log('Auto-starting location detection with cached position...');
+            initializeWithLocation();
+        }
+    }, 500);
 });
 
 document.addEventListener('visibilitychange', () => {
