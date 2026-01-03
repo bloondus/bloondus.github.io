@@ -508,10 +508,43 @@ async function searchStation(query) {
     try {
         console.log('Searching for station:', query);
         showLoading('Searching stations...');
-        const stations = await searchStationsByName(query.trim());
+        
+        // First try to find stations by name
+        let stations = await searchStationsByName(query.trim());
         console.log('Search results:', stations);
         
+        // If no stations found, try to geocode the address and find nearby stations
         if (stations.length === 0) {
+            console.log('No stations found by name, trying to geocode address...');
+            showLoading('Looking for nearest station to address...');
+            
+            // Use the locations API without type filter to get coordinates
+            const geoUrl = `https://transport.opendata.ch/v1/locations?query=${encodeURIComponent(query.trim())}`;
+            const geoResponse = await fetch(geoUrl);
+            const geoData = await geoResponse.json();
+            
+            if (geoData.stations && geoData.stations.length > 0) {
+                const location = geoData.stations[0];
+                console.log('Found location:', location.name, 'at', location.coordinate);
+                
+                // Find nearby stations
+                const nearbyStations = await findNearbyStations(
+                    location.coordinate.x,  // latitude
+                    location.coordinate.y,  // longitude
+                    1000  // 1km radius
+                );
+                
+                if (nearbyStations.length > 0) {
+                    console.log(`Found ${nearbyStations.length} nearby stations`);
+                    // Show station selection
+                    elements.loadingState.classList.add('hidden');
+                    elements.nearbyStations.classList.remove('hidden');
+                    state.nearbyStations = nearbyStations;
+                    renderNearbyStations(nearbyStations);
+                    return;
+                }
+            }
+            
             showError(`No stations found for "${query}"`, false);
             return;
         }
