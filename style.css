@@ -41,26 +41,28 @@ body {
 .container {
     max-width: 600px;
     margin: 0 auto;
-    padding: 10px;
+    padding: 5px 10px;
     min-height: 100vh;
 }
 
 /* Header */
 header {
     text-align: center;
-    margin-bottom: 10px;
-    padding: 5px 0;
+    margin-bottom: 5px;
+    padding: 0;
 }
 
 header h1 {
-    font-size: 1.3rem;
+    font-size: 1.1rem;
     color: var(--secondary-color);
-    margin-bottom: 2px;
+    margin-bottom: 0;
+    font-weight: 600;
 }
 
 .subtitle {
     color: var(--text-secondary);
-    font-size: 0.8rem;
+    font-size: 0.75rem;
+    margin-top: 2px;
 }
 
 /* Loading State */
